@@ -260,11 +260,15 @@ async def broadcast_handler(client: Client, msg: Message):
         broadcast_state["current"] += 1
         if broadcast_state["current"] % 10 == 0:
             await status_msg.edit_text(
-                f"""📊 Broadcast Status:
-                
-                ✅ Success: {broadcast_state['success']}
-                ❌ Failed: {broadcast_state['failed']}
-                📤 Sent: {broadcast_state['current']}/{broadcast_state['total']}""",
+                f"📊 Broadcast Status:
+
+"
+                f"✅ Success: {broadcast_state['success']}
+"
+                f"❌ Failed: {broadcast_state['failed']}
+"
+                f"📤 Sent: {broadcast_state['current']}/{broadcast_state['total']}
+",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("❌ Cancel", callback_data="cancel_bcast")]
                 ])
@@ -272,12 +276,15 @@ async def broadcast_handler(client: Client, msg: Message):
         save_state()
 
     broadcast_state["is_running"] = False
-   await status_msg.edit_text(
-       f"""✅ Broadcast Finished!
-       
-       ✅ Success: {broadcast_state['success']}
-       ❌ Failed: {broadcast_state['failed']}
-       📤 Total: {broadcast_state['total']}"""
+    await status_msg.edit_text(
+        f"✅ Broadcast Finished!
+
+"
+        f"✅ Success: {broadcast_state['success']}
+"
+        f"❌ Failed: {broadcast_state['failed']}
+"
+        f"📤 Total: {broadcast_state['total']}"
     )
     os.remove(BCAST_STATE_FILE)
 
