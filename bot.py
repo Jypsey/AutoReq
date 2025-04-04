@@ -278,11 +278,19 @@ async def broadcast_handler(client: Client, msg: Message):
 
     broadcast_state["is_running"] = False
     await status_msg.edit_text(
-        f"""✅ Broadcast Finished!
+        await status_msg.edit_text(
+            f"""✅ Broadcast Finished!
 
-    ✅ Success: {broadcast_state['success']}
-    ❌ Failed: {broadcast_state['failed']}
-    📤 Total: {broadcast_state['total']}"""
+✅ Success: {broadcast_state['success']}
+❌ Failed: {broadcast_state['failed']}
+📤 Total: {broadcast_state['total']}"""
+
+#"
+ #       f"✅ Success: {broadcast_state['success']}
+#"
+ #       f"❌ Failed: {broadcast_state['failed']}
+#"
+ #       f"📤 Total: {broadcast_state['total']}"
     )
     os.remove(BCAST_STATE_FILE)
 
