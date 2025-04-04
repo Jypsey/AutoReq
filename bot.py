@@ -261,14 +261,15 @@ async def broadcast_handler(client: Client, msg: Message):
         if broadcast_state["current"] % 10 == 0:
             await status_msg.edit_text(
             await status_msg.edit_text(
-                f"""📊 Broadcast Status:
+    f"""📊 Broadcast Status:
 
 ✅ Success: {broadcast_state['success']}
 ❌ Failed: {broadcast_state['failed']}
 📤 Sent: {broadcast_state['current']}/{broadcast_state['total']}""",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❌ Cancel", callback_data="cancel_bcast")]
-                ])
+    reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_bcast")]
+    ])
+)
 
         save_state()
 
