@@ -269,11 +269,7 @@ async def broadcast_handler(client: Client, msg: Message):
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("❌ Cancel", callback_data="cancel_bcast")]
                 ])
-",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❌ Cancel", callback_data="cancel_bcast")]
-                ])
-            )
+
         save_state()
 
     broadcast_state["is_running"] = False
