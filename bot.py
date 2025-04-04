@@ -278,7 +278,7 @@ async def broadcast_handler(client: Client, msg: Message):
        ✅ Success: {broadcast_state['success']}
        ❌ Failed: {broadcast_state['failed']}
        📤 Total: {broadcast_state['total']}"""
-   )
+    )
     os.remove(BCAST_STATE_FILE)
 
 @app.on_callback_query(filters.regex("cancel_bcast") & filters.user(cfg.SUDO))
