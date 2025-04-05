@@ -1,47 +1,31 @@
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from configs import cfg
 
-client = MongoClient(cfg.MONGO_URI)
+class Database:
+    def __init__(self):
+        self.client = AsyncIOMotorClient(cfg.MONGO_URI)
+        self.db = self.client['auto_approve_bot']
+        self.users = self.db['users']
+        self.groups = self.db['groups']
 
-users = client['main']['users']
-groups = client['main']['groups']
+    async def user_exists(self, user_id: int) -> bool:
+        return bool(await self.users.find_one({"user_id": user_id}))
 
-def already_db(user_id):
-        user = users.find_one({"user_id" : str(user_id)})
-        if not user:
-            return False
-        return True
+    async def group_exists(self, chat_id: int) -> bool:
+        return bool(await self.groups.find_one({"chat_id": chat_id}))
 
-def already_dbg(chat_id):
-        group = groups.find_one({"chat_id" : str(chat_id)})
-        if not group:
-            return False
-        return True
+    async def add_user(self, user_id: int):
+        if not await self.user_exists(user_id):
+            await self.users.insert_one({"user_id": user_id})
 
-def add_user(user_id):
-    in_db = already_db(user_id)
-    if in_db:
-        return
-    return users.insert_one({"user_id": str(user_id)}) 
+    async def add_group(self, chat_id: int):
+        if not await self.group_exists(chat_id):
+            await self.groups.insert_one({"chat_id": chat_id})
 
-def remove_user(user_id):
-    in_db = already_db(user_id)
-    if not in_db:
-        return 
-    return users.delete_one({"user_id": str(user_id)})
-    
-def add_group(chat_id):
-    in_db = already_dbg(chat_id)
-    if in_db:
-        return
-    return groups.insert_one({"chat_id": str(chat_id)})
+    async def count_users(self) -> int:
+        return await self.users.count_documents({})
 
-def all_users():
-    user = users.find({})
-    usrs = len(list(user))
-    return usrs
+    async def count_groups(self) -> int:
+        return await self.groups.count_documents({})
 
-def all_groups():
-    group = groups.find({})
-    grps = len(list(group))
-    return grps
+db = Database()
