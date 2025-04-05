@@ -289,28 +289,34 @@ async def startup_tasks():
     """Initialize bot state on startup"""
     global user_cache, group_cache
     
-    # Fixed MongoDB queries
-    user_cache = {u["user_id"]: True for u in await users.find({}, {'user_id': 1}).to_list(length=None)}
-    group_cache = {g["group_id"]: True for g in await groups.find({}, {'group_id': 1}).to_list(length=None)}
-    
-    # Rest of your existing code...
-    
-    # Check for incomplete broadcast
-    saved_state = await load_state()
-    if saved_state and saved_state.get('active'):
-        broadcast_state.update(saved_state)
-        logger.info("Resuming interrupted broadcast...")
+    try:
+        # Fixed MongoDB queries - Proper async handling
+        users_cursor = users.find({}, {'user_id': 1})
+        user_cache = {u["user_id"]: True async for u in users_cursor}
         
-        # Create a dummy message for progress updates
-        from pyrogram.types import Message
-        dummy_msg = Message(
-            id=0,
-            chat=await app.get_chat(cfg.SUDO),  # Assuming SUDO is your user ID
-            from_user=await app.get_me()
-        )
+        groups_cursor = groups.find({}, {'group_id': 1})
+        group_cache = {g["group_id"]: True async for g in groups_cursor}
         
-        # Resume broadcast
-        asyncio.create_task(process_broadcast(dummy_msg))
+        logger.info(f"Cache warmed up: {len(user_cache)} users, {len(group_cache)} groups")
+        
+        # Check for incomplete broadcast
+        saved_state = await load_state()
+        if saved_state and saved_state.get('active'):
+            broadcast_state.update(saved_state)
+            logger.info("Resuming interrupted broadcast...")
+            
+            dummy_msg = Message(
+                id=0,
+                chat=await app.get_chat(cfg.SUDO),
+                from_user=await app.get_me(),
+                date=int(time.time())
+            )
+            asyncio.create_task(process_broadcast(dummy_msg))
+            
+    except Exception as e:
+        logger.error(f"Startup error: {str(e)}")
+        user_cache = {}
+        group_cache = {}
 
 @app.on_raw_update()
 async def cache_warmup(_, update, *args):
