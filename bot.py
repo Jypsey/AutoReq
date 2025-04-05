@@ -1,15 +1,14 @@
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
 import time
-from typing import List, Optional, Dict
-from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from pyrogram import filters, Client, errors, enums
-from pyrogram.errors import FloodWait
-from database import add_user, add_group, all_users, all_groups, users, groups, remove_user
-from configs import cfg
 import logging
 import pickle
 import os
+from typing import Dict, List
+from pyrogram import Client, filters, enums
+from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from pyrogram.errors import FloodWait, UserNotParticipant
+from database import db
+from configs import cfg
 
 # Configure logging
 logging.basicConfig(
@@ -18,17 +17,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Performance tuning
-MAX_CONCURRENT_TASKS = 500  # Adjust based on your server capacity
-BROADCAST_CHUNK_SIZE = 100
-BROADCAST_DELAY = 0.02  # Seconds between chunks
-
+# Initialize Pyrogram Client
 app = Client(
     "approver",
     api_id=cfg.API_ID,
     api_hash=cfg.API_HASH,
     bot_token=cfg.BOT_TOKEN,
-    workers=1000,  # High number for concurrent processing
+    workers=1000,
     max_concurrent_transmissions=100
 )
 
@@ -50,7 +45,7 @@ broadcast_state = {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Core Functions ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def save_state():
-    """Save broadcast state to file for recovery"""
+    """Save broadcast state to file"""
     with open('broadcast_state.pkl', 'wb') as f:
         pickle.dump(broadcast_state, f)
 
@@ -61,189 +56,166 @@ async def load_state():
             return pickle.load(f)
     return None
 
-#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Join Request Handler ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Join Request Handler ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @app.on_chat_join_request(filters.group | filters.channel & ~filters.private)
-async def approve(_, m: Message):
-    """Ultra-fast join request approval with bulk processing"""
+async def approve_request(_, message):
     try:
-        user_id = m.from_user.id
-        chat_id = m.chat.id
+        user_id = message.from_user.id
+        chat_id = message.chat.id
         
-        # Add to cache if not present
-        if chat_id not in group_cache:
-            add_group(chat_id)
-            group_cache[chat_id] = True
+        # Add to database and cache
+        await db.add_user(user_id)
+        await db.add_group(chat_id)
+        user_cache[user_id] = True
+        group_cache[chat_id] = True
         
-        # Process approval and welcome message concurrently
-        await asyncio.gather(
-            app.approve_chat_join_request(chat_id, user_id),
-            send_welcome_message(user_id, m),
-            return_exceptions=True  # Prevent one failure from blocking others
-        )
+        # Approve request
+        await app.approve_chat_join_request(chat_id, user_id)
         
-        if user_id not in user_cache:
-            add_user(user_id)
-            user_cache[user_id] = True
-            
-    except Exception as err:
-        logger.error(f"Error in approve: {str(err)}", exc_info=True)
-
-async def send_welcome_message(user_id: int, m: Message):
-    """Optimized welcome message sender"""
-    try:
+        # Send welcome message
         buttons = [
             [InlineKeyboardButton("🎥 GROUP 1 🎥", url="https://t.me/+Acp3hogTGpcyOTFl")],
             [InlineKeyboardButton("🎥 NEW MOVIES 🎥", url="https://t.me/CINEMA_HUB_NEWMOVIES")]
         ]
         
-        await app.send_message(
-            user_id,
-            f"**Hello {m.from_user.mention}!\nYour request to join {m.chat.title} was approved.**",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        try:
+            await app.send_message(
+                user_id,
+                f"**Hello {message.from_user.mention}!\nYour request to join {message.chat.title} was approved.**",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except Exception as e:
+            logger.error(f"Welcome message failed: {e}")
+
     except Exception as e:
-        logger.error(f"Welcome message failed for {user_id}: {str(e)}")
+        logger.error(f"Approval error: {e}", exc_info=True)
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Start Command ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @app.on_message(filters.command("start"))
-async def start(_, m: Message):
-    """Optimized start command without force subscription"""
+async def start_command(_, message: Message):
     try:
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("🗯 Channel", url="https://t.me/REQUSET_ACCEPT_BOT"),
                 InlineKeyboardButton("💬 Support", url="https://t.me/REQUSET_ACCEPT_BOT")
             ],
-            [InlineKeyboardButton("➕ Add me to your Chat ➕", url="https://t.me/REQUSET_ACCEPT_BOT")]
-        ]) if m.chat.type == enums.ChatType.PRIVATE else InlineKeyboardMarkup([
-            [InlineKeyboardButton("💁‍♂️ Start me private 💁‍♂️", url="https://t.me/Auto_Request_Acceptor_BOT")]
+            [InlineKeyboardButton("➕ Add me to Chat ➕", url="https://t.me/REQUSET_ACCEPT_BOT")]
+        ]) if message.chat.type == enums.ChatType.PRIVATE else InlineKeyboardMarkup([
+            [InlineKeyboardButton("💁‍♂️ Start privately", url="https://t.me/Auto_Request_Acceptor_BOT")]
         ])
         
-        if m.from_user.id not in user_cache:
-            add_user(m.from_user.id)
-            user_cache[m.from_user.id] = True
-        
-        await m.reply_text(
-            "**🦊 Hello {}!\nI'm an ultra-fast auto approval bot!**".format(m.from_user.mention),
+        await message.reply_text(
+            f"**🦊 Hello {message.from_user.mention}!\nI'm an auto-approval bot!**",
             reply_markup=keyboard
         )
         
+        # Add user to database if not exists
+        if message.from_user.id not in user_cache:
+            await db.add_user(message.from_user.id)
+            user_cache[message.from_user.id] = True
+            
     except Exception as e:
-        logger.error(f"Start command error: {str(e)}")
+        logger.error(f"Start command error: {e}")
 
-#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Enhanced Broadcast System ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Broadcast System ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-@app.on_message(filters.command(["bcast", "fcast"]) & filters.user(cfg.SUDO))
-async def broadcast_handler(_, m: Message):
-    """Advanced broadcast system with resume capability"""
+@app.on_message(filters.command(["bcast", "fcast"]) & filters.user(cfg.SUDO_USERS))
+async def broadcast_command(_, message: Message):
     if broadcast_state['active']:
-        await m.reply_text("⚠️ A broadcast is already in progress!")
+        await message.reply_text("⚠️ Broadcast already in progress!")
         return
     
-    if not m.reply_to_message:
-        await m.reply_text("ℹ️ Please reply to a message to broadcast it.")
+    if not message.reply_to_message:
+        await message.reply_text("ℹ️ Reply to a message to broadcast it")
         return
     
-    # Initialize broadcast state
+    # Initialize broadcast
     broadcast_state.update({
         'active': True,
         'current_position': 0,
-        'total_users': users.count_documents({}),
+        'total_users': await db.count_users(),
         'success': 0,
         'failed': 0,
         'deactivated': 0,
-        'message': m.reply_to_message,
-        'is_forward': m.command[0] == "fcast",
+        'message': message.reply_to_message,
+        'is_forward': message.command[0] == "fcast",
         'start_time': time.time()
     })
     
     await save_state()
     
-    # Create control buttons
+    # Start broadcast
     control_buttons = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🛑 Cancel Broadcast", callback_data="cancel_bcast")
+        InlineKeyboardButton("🛑 Cancel", callback_data="cancel_bcast")
     ]])
     
-    progress_msg = await m.reply_text(
+    progress_msg = await message.reply_text(
         "📢 Starting broadcast...",
         reply_markup=control_buttons
     )
     
-    # Process broadcast in background
-    asyncio.create_task(process_broadcast(progress_msg))
+    asyncio.create_task(run_broadcast(progress_msg))
 
-async def process_broadcast(progress_msg: Message):
-    """Process broadcast in chunks with resume capability"""
+async def run_broadcast(progress_msg: Message):
     try:
-        user_ids = [user["user_id"] async for user in users.find({}, {'user_id': 1})]
+        # Get all user IDs
+        user_ids = []
+        async for user in db.users.find({}, {'user_id': 1}):
+            user_ids.append(user['user_id'])
         
-        while broadcast_state['current_position'] < len(user_ids) and broadcast_state['active']:
-            chunk = user_ids[
-                broadcast_state['current_position']:
-                broadcast_state['current_position'] + BROADCAST_CHUNK_SIZE
-            ]
+        # Process in chunks
+        chunk_size = 100
+        while (broadcast_state['current_position'] < len(user_ids) and broadcast_state['active']:
+            chunk = user_ids[broadcast_state['current_position']:broadcast_state['current_position']+chunk_size]
             
-            # Process chunk concurrently
+            # Process chunk
             results = await asyncio.gather(
                 *[send_broadcast(user_id) for user_id in chunk],
                 return_exceptions=True
             )
             
-            # Update statistics
+            # Update stats
             for result in results:
-                if isinstance(result, Exception):
-                    broadcast_state['failed'] += 1
-                    logger.error(f"Broadcast error: {str(result)}")
+                if result == "success":
+                    broadcast_state['success'] += 1
                 elif result == "deactivated":
                     broadcast_state['deactivated'] += 1
-                elif result == "success":
-                    broadcast_state['success'] += 1
+                else:
+                    broadcast_state['failed'] += 1
             
             broadcast_state['current_position'] += len(chunk)
             await save_state()
             
             # Update progress
-            elapsed = time.time() - broadcast_state['start_time']
-            remaining = (len(user_ids) - broadcast_state['current_position']) * (elapsed / broadcast_state['current_position']) if broadcast_state['current_position'] > 0 else 0
-            
-            progress_text = (
-                f"📊 Broadcast Progress\n\n"
+            progress = (
+                f"📊 Progress: {broadcast_state['current_position']}/{len(user_ids)}\n"
                 f"✅ Success: {broadcast_state['success']}\n"
                 f"❌ Failed: {broadcast_state['failed']}\n"
-                f"👻 Deactivated: {broadcast_state['deactivated']}\n"
-                f"⏳ Remaining: {int(remaining)}s\n"
-                f"📤 Processed: {broadcast_state['current_position']}/{len(user_ids)}"
+                f"👻 Deactivated: {broadcast_state['deactivated']}"
             )
+            await progress_msg.edit_text(progress)
             
-            try:
-                await progress_msg.edit_text(progress_text)
-            except Exception as e:
-                logger.error(f"Progress update failed: {str(e)}")
-            
-            await asyncio.sleep(BROADCAST_DELAY)
+            await asyncio.sleep(0.1)  # Small delay
         
         # Broadcast complete
-        final_text = (
-            f"🎉 Broadcast Complete!\n\n"
+        await progress_msg.edit_text(
+            f"🎉 Broadcast complete!\n"
+            f"⏱️ Time: {time.time()-broadcast_state['start_time']:.1f}s\n"
             f"✅ Success: {broadcast_state['success']}\n"
             f"❌ Failed: {broadcast_state['failed']}\n"
-            f"👻 Deactivated: {broadcast_state['deactivated']}\n"
-            f"⏱️ Total Time: {int(time.time() - broadcast_state['start_time'])}s"
+            f"👻 Deactivated: {broadcast_state['deactivated']}"
         )
         
-        await progress_msg.edit_text(final_text)
-        
     except Exception as e:
-        logger.error(f"Broadcast processing failed: {str(e)}", exc_info=True)
-        await progress_msg.edit_text(f"⚠️ Broadcast failed: {str(e)}")
+        logger.error(f"Broadcast error: {e}")
+        await progress_msg.edit_text(f"⚠️ Broadcast failed: {e}")
     finally:
         broadcast_state['active'] = False
         await save_state()
 
 async def send_broadcast(user_id: int):
-    """Send broadcast message to a single user with error handling"""
     try:
         if broadcast_state['is_forward']:
             await broadcast_state['message'].forward(user_id)
@@ -251,79 +223,66 @@ async def send_broadcast(user_id: int):
             await broadcast_state['message'].copy(user_id)
         return "success"
     except errors.InputUserDeactivated:
-        # Remove deactivated users
-        remove_user(user_id)
-        if user_id in user_cache:
-            del user_cache[user_id]
+        await db.remove_user(user_id)
         return "deactivated"
     except errors.UserIsBlocked:
-        # Remove blocked users
-        remove_user(user_id)
-        if user_id in user_cache:
-            del user_cache[user_id]
+        await db.remove_user(user_id)
         return "deactivated"
     except FloodWait as e:
         await asyncio.sleep(e.value)
         return await send_broadcast(user_id)
-    except Exception as e:
-        raise e
+    except Exception:
+        return "failed"
 
 @app.on_callback_query(filters.regex("cancel_bcast"))
-async def cancel_broadcast(_, cb: CallbackQuery):
-    """Handle broadcast cancellation"""
+async def cancel_broadcast(_, query: CallbackQuery):
     if broadcast_state['active']:
         broadcast_state['active'] = False
-        await cb.answer("Broadcast cancelled!")
-        await cb.message.edit_text(
-            "🛑 Broadcast Cancelled!\n\n"
-            f"✅ Success: {broadcast_state['success']}\n"
-            f"❌ Failed: {broadcast_state['failed']}\n"
-            f"👻 Deactivated: {broadcast_state['deactivated']}\n"
-            f"⏱️ Time Elapsed: {int(time.time() - broadcast_state['start_time'])}s"
-        )
+        await query.answer("Broadcast cancelled!")
+        await query.message.edit_text("🛑 Broadcast cancelled!")
     else:
-        await cb.answer("No active broadcast to cancel!")
+        await query.answer("No active broadcast")
 
-#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Bot Startup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Startup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def startup_tasks():
-    """Initialize bot state on startup"""
+async def load_cache():
+    """Load users and groups into cache"""
     global user_cache, group_cache
     
     try:
-        # Fixed MongoDB queries - Proper async handling
-        users_cursor = users.find({}, {'user_id': 1})
-        user_cache = {u["user_id"]: True async for u in users_cursor}
+        # Load users
+        async for user in db.users.find({}, {'user_id': 1}):
+            user_cache[user['user_id']] = True
+            
+        # Load groups
+        async for group in db.groups.find({}, {'chat_id': 1}):
+            group_cache[group['chat_id']] = True
+            
+        logger.info(f"Cache loaded - Users: {len(user_cache)}, Groups: {len(group_cache)}")
         
-        groups_cursor = groups.find({}, {'group_id': 1})
-        group_cache = {g["group_id"]: True async for g in groups_cursor}
-        
-        logger.info(f"Cache warmed up: {len(user_cache)} users, {len(group_cache)} groups")
-        
-        # Check for incomplete broadcast
+        # Resume interrupted broadcast
         saved_state = await load_state()
         if saved_state and saved_state.get('active'):
             broadcast_state.update(saved_state)
-            logger.info("Resuming interrupted broadcast...")
+            logger.info("Resuming broadcast...")
             
             dummy_msg = Message(
                 id=0,
-                chat=await app.get_chat(cfg.SUDO),
+                chat=await app.get_chat(cfg.SUDO_USERS[0]),
                 from_user=await app.get_me(),
                 date=int(time.time())
             )
-            asyncio.create_task(process_broadcast(dummy_msg))
+            asyncio.create_task(run_broadcast(dummy_msg))
             
     except Exception as e:
-        logger.error(f"Startup error: {str(e)}")
-        user_cache = {}
-        group_cache = {}
+        logger.error(f"Cache load error: {e}")
 
 @app.on_raw_update()
-async def cache_warmup(_, update, *args):
-    """Warm up cache on startup"""
+async def startup(_, __, ___):
+    """Initialize on startup"""
     if not user_cache or not group_cache:
-        await startup_tasks()
+        await load_cache()
 
-print("🚀 Ultra-Fast Bot is now running!")
-app.run()
+if __name__ == "__main__":
+    logger.info("Starting bot...")
+    app.run()
