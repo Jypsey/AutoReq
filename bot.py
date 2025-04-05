@@ -77,31 +77,35 @@ async def approve_request(_, message):
             # Try to approve the request
             await app.approve_chat_join_request(chat_id, user_id)
             logger.info(f"Approved join request from {user_id} in {chat_id}")
+            
+            # Send welcome message with error handling
+            buttons = [
+                [InlineKeyboardButton("🎥 GROUP 1 🎥", url="https://t.me/+Acp3hogTGpcyOTFl")],
+                [InlineKeyboardButton("🎥 NEW MOVIES 🎥", url="https://t.me/CINEMA_HUB_NEWMOVIES")]
+            ]
+            
+            try:
+                await app.send_message(
+                    user_id,
+                    f"**Hello {message.from_user.mention}!\nYour request to join {message.chat.title} was approved.**",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+            except errors.UserIsBlocked:
+                logger.info(f"User {user_id} blocked the bot - can't send welcome")
+            except errors.PeerIdInvalid:
+                logger.info(f"Invalid peer ID for {user_id} - may have deleted account")
+            except Exception as e:
+                logger.warning(f"Welcome message failed for {user_id}: {e}")
+
         except errors.UserAlreadyParticipant:
             logger.info(f"User {user_id} already in chat {chat_id}")
-            return
+        except errors.HideRequesterMissing:
+            logger.info(f"Join request already handled for {user_id} in {chat_id}")
         except FloodWait as e:
             logger.warning(f"Flood wait: sleeping for {e.value} seconds")
             await asyncio.sleep(e.value)
-            return await approve_request(_, message)
         except Exception as e:
             logger.error(f"Approval error for {user_id}: {e}")
-            return
-        
-        # Send welcome message (fixed indentation)
-        buttons = [
-            [InlineKeyboardButton("🎥 GROUP 1 🎥", url="https://t.me/+Acp3hogTGpcyOTFl")],
-            [InlineKeyboardButton("🎥 NEW MOVIES 🎥", url="https://t.me/CINEMA_HUB_NEWMOVIES")]
-        ]
-        
-        try:
-            await app.send_message(
-                user_id,
-                f"**Hello {message.from_user.mention}!\nYour request to join {message.chat.title} was approved.**",
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except Exception as e:
-            logger.error(f"Welcome message failed: {e}")
 
     except Exception as e:
         logger.error(f"Approval processing error: {e}", exc_info=True)
