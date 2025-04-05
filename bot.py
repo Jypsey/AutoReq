@@ -306,6 +306,28 @@ async def startup(client, update, users_chats, _):  # Now accepts all 4 paramete
     if not user_cache or not group_cache:
         await load_cache()
 
+
+
+@app.on_message(filters.command("stats") & filters.user(cfg.SUDO_USERS))
+async def show_stats(_, message: Message):
+    try:
+        # Get counts from database
+        user_count = await db.users.count_documents({})
+        group_count = await db.groups.count_documents({})
+        
+        # Format response
+        response = (
+            "📊 <b>Bot Statistics</b>\n\n"
+            f"👤 <b>Total Users:</b> <code>{user_count}</code>\n"
+            f"👥 <b>Total Groups/Channels:</b> <code>{group_count}</code>\n"
+            f"🚀 <b>Total Records:</b> <code>{user_count + group_count}</code>"
+        )
+        
+        await message.reply_text(response)
+        
+    except Exception as e:
+        logger.error(f"Stats command error: {e}")
+        await message.reply_text("❌ Failed to get statistics. Check logs.")
 if __name__ == "__main__":
     logger.info("Starting bot...")
     app.run()
