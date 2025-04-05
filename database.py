@@ -4,7 +4,7 @@ from configs import cfg
 class Database:
     def __init__(self):
         self.client = AsyncIOMotorClient(cfg.MONGO_URI)
-        self.db = self.client['auto_approve_bot']
+        self.db = self.client['main']
         self.users = self.db['users']
         self.groups = self.db['groups']
 
