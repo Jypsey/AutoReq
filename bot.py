@@ -245,16 +245,20 @@ async def cancel_broadcast(_, query: CallbackQuery):
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Startup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Startup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 async def load_cache():
     """Load users and groups into cache"""
     global user_cache, group_cache
     
     try:
         # Load users
+        user_cache.clear()
         async for user in db.users.find({}, {'user_id': 1}):
             user_cache[user['user_id']] = True
             
         # Load groups
+        group_cache.clear()
         async for group in db.groups.find({}, {'chat_id': 1}):
             group_cache[group['chat_id']] = True
             
@@ -278,7 +282,7 @@ async def load_cache():
         logger.error(f"Cache load error: {e}")
 
 @app.on_raw_update()
-async def startup(_, __, ___):
+async def startup(client, update, users_chats, _):  # Now accepts all 4 parameters
     """Initialize on startup"""
     if not user_cache or not group_cache:
         await load_cache()
