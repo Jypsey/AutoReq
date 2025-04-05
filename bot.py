@@ -167,7 +167,7 @@ async def run_broadcast(progress_msg: Message):
         
         # Process in chunks
         chunk_size = 100
-        while (broadcast_state['current_position'] < len(user_ids) and broadcast_state['active']:
+        while broadcast_state['current_position'] < len(user_ids) and broadcast_state['active']:  # REMOVED EXTRA (
             chunk = user_ids[broadcast_state['current_position']:broadcast_state['current_position']+chunk_size]
             
             # Process chunk
