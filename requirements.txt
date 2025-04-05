@@ -1,10 +1,5 @@
 pyrogram>=2.0.0
 motor>=3.1.0
-pymongo[srv]>=4.0.0
 python-dotenv>=0.19.0
 loguru>=0.5.3
-aiohttp>=3.8.0
-uvloop>=0.16.0  # Optional but highly recommended for Linux
-python-socketio>=5.0.0  # For potential real-time monitoring
-cachetools>=4.2.0  # For advanced caching
-pydantic>=1.8.0  # For data validation
+uvloop>=0.16.0; sys_platform == 'linux'
