@@ -90,10 +90,10 @@ async def approve_request(_, message):
                return
         
         # Send welcome message
-        buttons = [
-            [InlineKeyboardButton("🎥 GROUP 1 🎥", url="https://t.me/+Acp3hogTGpcyOTFl")],
-            [InlineKeyboardButton("🎥 NEW MOVIES 🎥", url="https://t.me/CINEMA_HUB_NEWMOVIES")]
-        ]
+            buttons = [
+               [InlineKeyboardButton("🎥 GROUP 1 🎥", url="https://t.me/+Acp3hogTGpcyOTFl")],
+               [InlineKeyboardButton("🎥 NEW MOVIES 🎥", url="https://t.me/CINEMA_HUB_NEWMOVIES")]
+           ]
         
         try:
             await app.send_message(
