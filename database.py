@@ -1,31 +1,43 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from configs import cfg
+import asyncio
 
 class Database:
     def __init__(self):
-        self.client = AsyncIOMotorClient(cfg.MONGO_URI)
-        self.db = self.client['main']
-        self.users = self.db['users']
-        self.groups = self.db['groups']
+        self.client = AsyncIOMotorClient(
+            cfg.MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            socketTimeoutMS=30000,
+            connectTimeoutMS=10000,
+            waitQueueTimeoutMS=10000
+        )
+        self.db = self.client.get_database()
+        self.users = self.db.users
+        self.groups = self.db.groups
 
-    async def user_exists(self, user_id: int) -> bool:
-        return bool(await self.users.find_one({"user_id": user_id}))
+    async def _safe_cursor_execute(self, cursor_op):
+        """Handle cursor operations safely"""
+        try:
+            return await cursor_op
+        except Exception as e:
+            if "CursorNotFound" in str(e):
+                logger.warning("Cursor expired, retrying...")
+                await asyncio.sleep(1)
+                return await cursor_op
+            raise e
 
-    async def group_exists(self, chat_id: int) -> bool:
-        return bool(await self.groups.find_one({"chat_id": chat_id}))
+    async def load_users_to_cache(self):
+        """Safe user cache loading"""
+        user_cache.clear()
+        cursor = self.users.find({}, {'user_id': 1}).batch_size(100)
+        async for user in await self._safe_cursor_execute(cursor):
+            user_cache[user['user_id']] = True
 
-    async def add_user(self, user_id: int):
-        if not await self.user_exists(user_id):
-            await self.users.insert_one({"user_id": user_id})
+    async def load_groups_to_cache(self):
+        """Safe group cache loading"""
+        group_cache.clear()
+        cursor = self.groups.find({}, {'chat_id': 1}).batch_size(100)
+        async for group in await self._safe_cursor_execute(cursor):
+            group_cache[group['chat_id']] = True
 
-    async def add_group(self, chat_id: int):
-        if not await self.group_exists(chat_id):
-            await self.groups.insert_one({"chat_id": chat_id})
-
-    async def count_users(self) -> int:
-        return await self.users.count_documents({})
-
-    async def count_groups(self) -> int:
-        return await self.groups.count_documents({})
-
-db = Database()
+    # ... keep other methods ...
