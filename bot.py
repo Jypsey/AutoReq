@@ -287,10 +287,13 @@ async def cancel_broadcast(_, cb: CallbackQuery):
 
 async def startup_tasks():
     """Initialize bot state on startup"""
-    # Load cache
     global user_cache, group_cache
-    user_cache = {u["user_id"]: True async for u in users.find({}, {'user_id': 1})}
-    group_cache = {g["group_id"]: True async for g in groups.find({}, {'group_id': 1})}
+    
+    # Fixed MongoDB queries
+    user_cache = {u["user_id"]: True for u in await users.find({}, {'user_id': 1}).to_list(length=None)}
+    group_cache = {g["group_id"]: True for g in await groups.find({}, {'group_id': 1}).to_list(length=None)}
+    
+    # Rest of your existing code...
     
     # Check for incomplete broadcast
     saved_state = await load_state()
