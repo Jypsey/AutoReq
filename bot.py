@@ -9,6 +9,9 @@ from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, 
 from pyrogram.errors import FloodWait, UserNotParticipant
 from database import db
 from configs import cfg
+import pyrogram
+from pyrogram import errors  # Add this import
+from pyrogram.errors import FloodWait
 
 # Configure logging
 logging.basicConfig(
@@ -72,15 +75,19 @@ async def approve_request(_, message):
         
         try:
             # Try to approve the request
-            await app.approve_chat_join_request(chat_id, user_id)
-            logger.info(f"Approved join request from {user_id} in {chat_id}")
-        except pyrogram.errors.UserAlreadyParticipant:
-            # User already joined, just log it
-            logger.info(f"User {user_id} already in chat {chat_id}")
-            return
-        except Exception as e:
-            logger.error(f"Approval error for {user_id}: {e}")
-            return
+           try:
+    await app.approve_chat_join_request(chat_id, user_id)
+    logger.info(f"Approved join request from {user_id} in {chat_id}")
+except errors.UserAlreadyParticipant:
+    logger.info(f"User {user_id} already in chat {chat_id}")
+    return
+except FloodWait as e:
+    logger.warning(f"Flood wait: sleeping for {e.value} seconds")
+    await asyncio.sleep(e.value)
+    return await approve_request(_, message)
+except Exception as e:
+    logger.error(f"Approval error for {user_id}: {e}")
+    return
         
         # Send welcome message
         buttons = [
