@@ -70,8 +70,17 @@ async def approve_request(_, message):
         user_cache[user_id] = True
         group_cache[chat_id] = True
         
-        # Approve request
-        await app.approve_chat_join_request(chat_id, user_id)
+        try:
+            # Try to approve the request
+            await app.approve_chat_join_request(chat_id, user_id)
+            logger.info(f"Approved join request from {user_id} in {chat_id}")
+        except pyrogram.errors.UserAlreadyParticipant:
+            # User already joined, just log it
+            logger.info(f"User {user_id} already in chat {chat_id}")
+            return
+        except Exception as e:
+            logger.error(f"Approval error for {user_id}: {e}")
+            return
         
         # Send welcome message
         buttons = [
@@ -89,7 +98,7 @@ async def approve_request(_, message):
             logger.error(f"Welcome message failed: {e}")
 
     except Exception as e:
-        logger.error(f"Approval error: {e}", exc_info=True)
+        logger.error(f"Approval processing error: {e}", exc_info=True)
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Start Command ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
